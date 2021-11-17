@@ -18,7 +18,7 @@ import random as rn
 
 from sklearn.model_selection import train_test_split
 
-from quantileNetwork import QuantileNet, make_dataset, trueLoss
+from quantileNetwork import QuantileNet, make_dataset
 
 os.environ["PYTHONHASHSEED"] = "0"
 np.random.seed(42)
@@ -38,9 +38,9 @@ tf.random.set_seed(3)
 @click.option('--networkName', default="genToReco", help='Name of network')
 def main(hidden, width, alpha, initiallr, batch, cycles, epochs, patience, dataname, networkname):
     data = np.load(dataname).T
-    rawRecoData = data[4:8,:]
-    recoData = data[8:12,:]
-    genData = data[12:16]
+    rawRecoData = data[0:4,:]
+    recoData = data[4:8,:]
+    genData = data[8:12]
     rawRecoData[3,:] = rawRecoData[3,:] 
     rawRecoData[0,:] = np.log(rawRecoData[0,:])
     rawRecoData[3,:] = np.log(rawRecoData[3,:]+0.7)
@@ -82,7 +82,7 @@ def main(hidden, width, alpha, initiallr, batch, cycles, epochs, patience, datan
                                                         random_state=42)
 
     print(trainIn.shape, valIn.shape, trainOut.shape, valOut.shape)
-    model = QuantileNet()
+    model = QuantileNet(network_type="not normalizing")
 
     model.add(
         tf.keras.layers.Dense(
@@ -103,11 +103,11 @@ def main(hidden, width, alpha, initiallr, batch, cycles, epochs, patience, datan
 
     model.add(
         tf.keras.layers.Dense(
-            2,
+            1,
             kernel_initializer="glorot_uniform",
             activation=None))
    
-    callbackMetric="val_true_loss"
+    callbackMetric="val_loss"
     callback = tf.keras.callbacks.EarlyStopping(
             monitor=callbackMetric, patience=patience, restore_best_weights=True)
     trainOut = tf.expand_dims(trainOut,1)
@@ -120,7 +120,6 @@ def main(hidden, width, alpha, initiallr, batch, cycles, epochs, patience, datan
         model.compile(optimizer=tf.keras.optimizers.Adam(initiallr * (10**(-x)),
                       amsgrad=True),
                       loss=model.loss,
-                      metrics=trueLoss(),
                      run_eagerly=False)
 
 

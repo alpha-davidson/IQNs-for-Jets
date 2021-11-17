@@ -49,14 +49,60 @@ def make_dataset(input_vals, output_vals, input_dims, output_dims, samples):
     return(dset_in, dset_out)
 
 
+class trueLoss(tf.keras.metrics.Mean):
+
+    def __init__(self, name='true_loss',clip=1e-7, **kwargs):
+        super(trueLoss, self).__init__(name=name, **kwargs)
+        self.clip = 1-clip
+    def update_state(self, y_actual, y_pred, sample_weight=None):
+        @tf.custom_gradient
+        def rescale(actual, shift, scale):
+            def grad(upstream):
+                dnew_dactual = 1/scale
+                dnew_dshift = 0
+                dnew_dscale = 0
+                return(upstream*dnew_dactual, upstream*dnew_dshift,
+                       upstream*dnew_dscale)
+            newVal = (actual-shift)/scale
+            return newVal, grad
+    
+        quants = tf.expand_dims(y_pred[:, -1], 1)
+        quants = (quants+3)/6
+
+        scale = tf.expand_dims(y_pred[:, 2], 1)
+        shift = tf.expand_dims(y_pred[:, 3], 1)
+
+        val = tf.expand_dims(y_pred[:, 0], 1)
+        val = tf.clip_by_value((val+3)/6, -self.clip, self.clip)
+        val = tf.math.atanh(val)*scale+shift
+        val = y_actual-val
+        loss_val = tf.where(val < 0.0, tf.abs((-1+quants)), quants)
+        loss_val = loss_val*tf.abs(val)
+        loss = loss_val
+        
+        y_pred_2 = tf.expand_dims(y_pred[:, 1], 1)
+        val = y_actual-y_pred_2
+        loss_val = tf.where(val < 0.0, tf.abs((-1+quants)), quants)
+        loss_val = loss_val*tf.abs(val)
+        loss_val = tf.reduce_mean(loss_val)
+
+        loss += loss_val
+        
+        return super(trueLoss, self).update_state(
+            loss, sample_weight=sample_weight)
+
+    def result(self):
+        return self.total/self.count
+
+
 class QuantileNet(tf.keras.Model):
     """
     An implementation of a quantile network. For intput data D and output dims
     x, y, z, ..., this network learns p(x), p(y|x), p(z|x, y), ... and can be
     used to sample from p(x, y, z, ...)
     """
-    def __init__(self, grad_loss_scale=100, network_type="normalizing",
-                 clip=1e-7):
+    def __init__(self, grad_loss_scale=100, tanh_loss_scale=100,
+                 network_type="normalizing", clip=1e-7):
         """
         ----------
         grad_loss_scale: value to scale the graident loss scle. The gradient
@@ -81,6 +127,7 @@ class QuantileNet(tf.keras.Model):
             self.inner_call = self.no_normalizing_call
 
         self.grad_loss_scale = grad_loss_scale
+        self.tanh_loss_scale = tanh_loss_scale
         self.net_layers = []
         self.clip = clip
 
@@ -88,7 +135,8 @@ class QuantileNet(tf.keras.Model):
         custom = {"QuantileNet": self,
                   "no_normalizing_loss": self.no_normalizing_loss,
                   "normalizing_loss": self.normalizing_loss,
-                  "loss": self.loss}
+                  "loss": self.loss,
+                  "trueLoss": trueLoss()}
         return(custom)
 
     def add(self, layer):
@@ -153,9 +201,9 @@ class QuantileNet(tf.keras.Model):
         scale = (out_high-out_low)/2
 
         # Randomly sample quantiles
-        quantiles = tf.random.uniform(shape=[1, count], minval=0, maxval=1,
+        quantiles1 = tf.random.uniform(shape=[1, count], minval=0, maxval=1,
                                       dtype=tf.float32)
-        quantiles = quantiles*6 - 3
+        quantiles = quantiles1*6 - 3
 
         # Full inputs
         inputs = tf.transpose(tf.concat([inputs, quantiles], axis=0))
@@ -184,11 +232,14 @@ class QuantileNet(tf.keras.Model):
         grad_loss += tf.reduce_mean(loss)
 
         # Transform edges of normalized network prediction
-        out_norm = tf.clip_by_value((out_norm+3)/6, -1+self.clip, 1-self.clip)
+        out_norm = (out_norm+3)/6
+        abs_out_norm = tf.math.abs(out_norm)
+        loss = self.tanh_loss_scale*tf.where(abs_out_norm > 1,
+                                             (abs_out_norm-1)**2, 0)
+        grad_loss += tf.reduce_mean(loss)
 
-        # Unnormalize output prediction
-        out_norm = tf.math.atanh(out_norm)*scale+shift
-        output = tf.concat([out_norm, out_base, tf.transpose(quantiles)],
+        output = tf.concat([out_norm, out_base, scale, shift,
+                            tf.transpose(quantiles)],
                            axis=1)
         return(grad_loss, output)
 
@@ -278,13 +329,29 @@ class QuantileNet(tf.keras.Model):
         outputVal : The output of the network
         """
 
+        @tf.custom_gradient
+        def rescale(actual, shift, scale):
+            def grad(upstream):
+                dnew_dactual = 1/scale
+                dnew_dshift = 0
+                dnew_dscale = 0
+                return(upstream*dnew_dactual, upstream*dnew_dshift,
+                       upstream*dnew_dscale)
+            newVal = (actual-shift)/scale
+            return newVal, grad
+
         quants = tf.expand_dims(y_pred[:, -1], 1)
         quants = (quants+3)/6
 
+        scale = tf.expand_dims(y_pred[:, 2], 1)
+        shift = tf.expand_dims(y_pred[:, 3], 1)
+
         y_pred_1 = tf.expand_dims(y_pred[:, 0], 1)
-        val = y_actual - y_pred_1
+        val = tf.math.tanh(rescale(y_actual, shift, scale)) - y_pred_1
         loss_val = tf.where(val < 0.0, tf.abs((-1+quants)), quants)
+
         loss_val = loss_val*tf.abs(val)
+        loss_val = tf.math.abs(loss_val)
         loss_val = tf.reduce_mean(loss_val)
         true_loss = loss_val
 
@@ -350,7 +417,7 @@ def sample_net(quantile_object, quantile_samples, inputs, input_count,
     clip = 1 - clip
 
     # Declare two possible prediction functions
-    @tf.function(jit_compile=True)
+    @tf.function#(jit_compile=True)
     def predict_normalizing(val):
         """
         Run interior predictions within graph
@@ -381,6 +448,7 @@ def sample_net(quantile_object, quantile_samples, inputs, input_count,
             val_high = layer(val_high)
 
         # get actual value, plus normalizing info
+        otherVal = val[:, 1:2]
         val = val[:, 0:1]
         val_low = val_low[:, 1:2]
         val_mid = val_mid[:, 1:2]
@@ -389,9 +457,9 @@ def sample_net(quantile_object, quantile_samples, inputs, input_count,
         # transform prediction
         val = tf.clip_by_value((val+3)/6, -clip, clip)
         val = tf.math.atanh(val)*(val_high-val_low)/2+val_mid
-        return(val)
+        return(otherVal)
 
-    @tf.function(jit_compile=True)
+    @tf.function#(jit_compile=True)
     def predict_no_normalizing(val):
         """
         Run interior predictions within graph
@@ -420,7 +488,7 @@ def sample_net(quantile_object, quantile_samples, inputs, input_count,
     # Random quantile value
     randomQuant = (tf.random.uniform([1, quantile_samples*numExamples],
                                      minval=-3, maxval=3,
-                                     dtype=tf.dtypes.float32))
+                                     dtype=tf.dtypes.float32))*1
 
     # Input repeated according to number of samples
     extendedInput = tf.repeat(inputs, quantile_samples, axis=1)
@@ -497,7 +565,7 @@ def sample_net(quantile_object, quantile_samples, inputs, input_count,
         vectors.append(val[:, input_dims+output_dims+old_location+1:-1])
 
         # New quantiles
-        vectors.append(tf.random.uniform(output.shape, -3, 3, tf.float32))
+        vectors.append(tf.random.uniform(output.shape, -3, 3, tf.float32)*1)
         val = tf.concat(vectors, axis=1)
         output = predict_inner(val)
         return(tf.add(x, 1), val, output)
@@ -602,7 +670,7 @@ def predict_dist(quantile_object, quantiles, inputs, input_count, current_dim,
                 layer = quantile_object.net_layers[x]
                 val = layer(val)
             cdf = val[:, 0:1]
-        pdf = 1/g.gradient(cdf, inputs)[:, -1]
+        pdf =  1/(6*g.gradient(cdf, inputs))[:, -1]
         return(cdf, pdf)
 
     if(network_type == "normalizing"):
@@ -626,7 +694,8 @@ def predict_dist(quantile_object, quantiles, inputs, input_count, current_dim,
 
     # Random quantile value
     randomQuant = tf.expand_dims(quantiles*6 - 3, 0)
-
+    randomQuant = tf.repeat(randomQuant, numExamples, axis=0)
+    randomQuant = tf.expand_dims(tf.reshape(randomQuant, -1), 0)
     # Input repeated according to number of samples
     extendedInput = tf.repeat(inputs, quantile_samples, axis=1)
 
@@ -648,6 +717,7 @@ def predict_dist(quantile_object, quantiles, inputs, input_count, current_dim,
                                                   zeroInputs,
                                                   randomQuant], axis=0)))
     else:
+        print(extendedInput.shape, sampling_locs.shape, zeroInputs.shape, randomQuant.shape)
         final_inputs.append(tf.squeeze(tf.concat([extendedInput,
                                                   sampling_locs,
                                                   zeroInputs,

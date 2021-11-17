@@ -34,10 +34,10 @@ tf.random.set_seed(3)
 
 #Extract data
 data = np.load("mlData.npy").T
-trainIn = data[4:8,:]
+trainIn = data[0:4,:]
 trainIn[0,:] = np.log(trainIn[0,:])
 trainIn[3,:] = np.log(trainIn[3,:]+0.7)
-trainOut = data[12:16]
+trainOut = data[8:12]
 trainOut[0,:] = np.log(trainOut[0,:])
 trainOut[3,:] = np.log(trainOut[3,:]+0.7)
 
@@ -48,19 +48,13 @@ trainOut = trainOut.T
 
 normInfoIn=[[0,1],[0,1],[0,1],[0,1]]
 normInfoOut=[[0,1],[0,1],[0,1],[0,1]]
-trainIn, _, trainOut, _ = train_test_split(trainIn,
+trainIn, testIn, trainOut, testOut = train_test_split(trainIn,
                                                     trainOut,
                                                     test_size=1/3,
                                                     random_state=42)
 
-data = np.load("flavorData.npy").T
-testIn = data[12:16,:]
-testIn[0,:] = np.log(testIn[0,:])
-testIn[3,:] = np.log(testIn[3,:]+0.7)
-testIn = testIn.T
-print(testIn.shape)
 
-filename = 'genToReco.h5'
+filename = 'rawToGen.h5'
 ROW_SIZE = testIn.shape[0]
 NUM_COLUMNS = sampleNum*4
 f = tables.open_file(filename, mode='w')
@@ -73,7 +67,7 @@ for x in [0,1,2,3]:
     normInfoIn[x]=[np.mean(trainIn[:,x]),np.std(trainIn[:,x])]
     normInfoOut[x]=[np.mean(trainOut[:,x]),np.std(trainOut[:,x])]
     testIn[:,x]=(testIn[:,x]-np.mean(trainIn[:,x]))/(np.std(trainIn[:,x]))
-model = QuantileNet() #Used to load network
+model = QuantileNet(network_type="not normalizing") #Used to load network
 newModel = tf.keras.models.load_model(modelName, model.custom_objects())
 
 for y in range(0, testIn.shape[0], batchSize):
@@ -85,7 +79,7 @@ for y in range(0, testIn.shape[0], batchSize):
                     currentTestIn, #Input
                     currentTestIn.shape[1], #Number of examples (batch size)
                     currentTestIn.shape[0], #4d input
-                    4) #4d output
+                    4, network_type="not normalizing") #4d output
     out = np.array(out)
     currentTestIn = np.array(currentTestIn).T
     for x in range(4):

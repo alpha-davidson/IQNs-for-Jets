@@ -6,6 +6,8 @@ import tables
 import numpy as np
 import matplotlib.pyplot as plt
 
+from sklearn.model_selection import train_test_split
+
 filename = 'genToReco.h5'
 f = tables.open_file(filename, mode='r')
 reco = f.root.recoData[:,:]

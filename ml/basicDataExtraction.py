@@ -1,12 +1,16 @@
 import tables
 import numpy as np
 
+from sklearn.model_selection import train_test_split
+
 filename = 'rawToGen.h5'
 f = tables.open_file(filename, mode='r+')
-data = np.load("mlData.npy").T
-rawRecoData = data[4:8,:].T
-recoData = data[8:12,:].T
-genData = data[12:16,:].T
+data = np.load("mlData.npy")
+_, data, _, _ = train_test_split(data, data,test_size=1/3, random_state=42)
+data = data.T
+rawRecoData = data[0:4,:].T
+recoData = data[4:8,:].T
+genData = data[8:12,:].T
 partonFlavors = data[-3:-2,:].T
 hadronFlavors = data[-2:-1,:].T
 physicsFlators = data[-1:,:].T

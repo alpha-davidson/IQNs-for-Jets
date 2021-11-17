@@ -731,4 +731,3 @@ def predict_dist(quantile_object, quantiles, inputs, input_count, current_dim,
     cdf = tf.reshape(cdf, (input_count, quantile_samples))
     pdf = tf.reshape(pdf, (input_count, quantile_samples))
     return(cdf, pdf, quantiles)
-
