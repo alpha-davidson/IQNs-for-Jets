@@ -6,12 +6,6 @@ import os
 
 options = VarParsing ('analysis')
 
-options.register( 'executionMode',
-                  1,
-                  VarParsing.multiplicity.singleton,
-                  VarParsing.varType.int,
-                  "0 for particle data, 1 for jet data, 2 for jet prediction"
-               )
 options.parseArguments()
 process = cms.Process("AK4jets")
 
@@ -31,8 +25,8 @@ process.TFileService.fileName=cms.string("JetNtuple_RunIISummer16_13TeV_MC.root"
 filePath=os.environ["CMSSW_BASE"]+"/src/MLJetReconstruction/JetAnalyzer/python/"
 fileList = FileUtils.loadListFromFile(filePath+"filelist.txt")
 
-process.source = cms.Source("PoolSource",
-fileNames = cms.untracked.vstring(fileList[0:21])
+process.source = cms.Source("PoolSource", 
+	fileNames = cms.untracked.vstring(fileList[0:21]))
 
 process.AK4jets = cms.EDAnalyzer("JetAnalyzer",
 	## jet, PF and generator level collections ##
@@ -50,7 +44,8 @@ process.AK4jets = cms.EDAnalyzer("JetAnalyzer",
 	pfRhoAll = cms.InputTag("fixedGridRhoFastjetAll"),
 	pfRhoCentral = cms.InputTag("fixedGridRhoFastjetCentral"),
 	pfRhoCentralNeutral = cms.InputTag("fixedGridRhoFastjetCentralNeutral"),
-	pfRhoCentralChargedPileUp = cms.InputTag("fixedGridRhoFastjetCentralChargedPileUp")
+	pfRhoCentralChargedPileUp = cms.InputTag("fixedGridRhoFastjetCentralChargedPileUp"),
+	executionMode = cms.untracked.int32(1)
 )
 
 # Choose how many events to process (-1 = all)

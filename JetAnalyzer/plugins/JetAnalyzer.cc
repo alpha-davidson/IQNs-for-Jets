@@ -24,6 +24,7 @@ JetAnalyzer::JetAnalyzer(const edm::ParameterSet& iConfig):
     ptDToken_(consumes<edm::ValueMap<float>>(edm::InputTag("QGTagger", "ptD"))),
     axis2Token_(consumes<edm::ValueMap<float>>(edm::InputTag("QGTagger", "axis2"))),
     multToken_(consumes<edm::ValueMap<int>>(edm::InputTag("QGTagger", "mult"))),
+	executionMode (iConfig.getUntrackedParameter<int>("executionMode"))
 	
 {
     goodVtxNdof = iConfig.getParameter<double>("confGoodVtxNdof");
@@ -234,7 +235,6 @@ void JetAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetu
             const pat::PackedCandidate* pfPointer = &pf;
             pfMap.insert(std::pair <const pat::PackedCandidate*, const pat::PackedCandidate> (pfPointer, pf));
 
-			int pdgIDReco = pf.pdgId();
 			rawRecoP4 += pf.p4()*pf.puppiWeightNoLep();
 			++njetpf;
         }
@@ -246,19 +246,18 @@ void JetAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetu
         genJetEta = 0;
         genJetPhi = 0;
         genJetMass = 0;
-		float genJetE = 0;
+	genJetE = 0;
         
         // Check if the jet has a matching generator level jet
         if(j.genJet()) {
             jetGenMatch = 1;
             const reco::GenJet* gj = j.genJet();
-			
-			genRecoPT->Fill(gj->pt(), j.pt());
-			genJetPt = gj->pt();
+		
+	    genJetPt = gj->pt();
             genJetEta = gj->eta();
             genJetPhi = gj->phi();
             genJetMass = gj->mass();
-			genJetE = gj->p4().E();
+	    genJetE = gj->p4().E();
 			
             
         }
@@ -267,10 +266,6 @@ void JetAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetu
 			std::ofstream myfile;
 			myfile.open ("mlData.txt", std::ios_base::app);
 		
-			myfile << fullAlgPT << "\t";
-			myfile << fullAlgEta << "\t";
-			myfile << fullAlgPhi << "\t";
-			myfile << fullAlgE << "\t"; 
 		
 			myfile << rawRecoP4.pt() << "\t";
 			myfile << rawRecoP4.eta() << "\t";

@@ -171,6 +171,7 @@ class JetAnalyzer : public edm::EDAnalyzer {
         Float_t genJetEta;
         Float_t genJetPhi;
         Float_t genJetMass;
+	Float_t genJetE;
 
         // Generator level jet's particle variables
         UInt_t nGenJetPF;

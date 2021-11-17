@@ -8,9 +8,9 @@ First, follow the instruction [here](http://opendata.cern.ch/docs/cms-guide-dock
 
 Then enter the docker container and clone the repo and compile it. Make sure you are in the directory CMSSW_10_6_8_patch1/src before cloning. 
 ```
-git clone https://github.com/brkronheim/MLJetReconstruction.git
-scram b                 # compiles the code
+git clone https://github.com/alpha-davidson/IQNs-for-Jets.git
 cd IQNS-for-Jets/JetAnalyzer
+scram b                 # compiles the code
 ```
 
 ## Running the Mean Buildup Model
@@ -19,7 +19,12 @@ The first code that should be run is the dataset generation code. Do this by run
 ```
 cmsRun python/ConfFile_cfg.py
 ```
-This will result in the extraction of approximatley 3 million jets examples. Note that this can take on the order of 8 hours to run. After running, it will create the file mlData.txt. Transfer this to the python work area and run
+This will result in the extraction of approximatley 3 million jets examples. Note that this can take on the order of 8 hours to run. After running, it will create the file mlData.txt. Transfer this to the python work area. To make sure you have all the required packages run
+```
+pip install numpy matplotlib tensorflow tables sklearn
+```
+
+After this you can start running the python programs. Start with
 ```
 python cleanParticleData.py
 ```
@@ -38,9 +43,10 @@ python basicDataExtraction.py
 python plotBasicData.py
 ```
 to generate the graphs for the rawToGen training direction.
+
 Use
 ```
-python runBatchPredictions.py
+python runBatchPredictionsGenToReco.py
 python basicDataExtractionGenToReco.py
 python plotBasicDataGenToReco.py
 ```
