@@ -51,3 +51,7 @@ python basicDataExtractionGenToReco.py
 python plotBasicDataGenToReco.py
 ```
 to generate the graphs for the genToReco training direction.
+
+## Acknowledgements
+
+This work was supported by the National Science Foundation under Cooperative Agreement [OAC-1836650](https://www.nsf.gov/awardsearch/showAward?AWD_ID=1836650).
